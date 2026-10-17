@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpendWise - Multi-User Expense Tracker</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Firebase SDK (v10 compat mode for easy browser integration) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans antialiased transition-colors duration-300">
+
+  <!-- AUTHENTICATION SCREEN OVERLAY -->
+  <div id="authOverlay" class="fixed inset-0 bg-gray-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-800 border border-gray-700/80 rounded-3xl max-w-md w-full p-8 shadow-2xl relative">
+      <!-- Logo Header -->
+      <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-xl shadow-indigo-500/30 mx-auto mb-3">
+          <i class="fa-solid fa-wallet text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">SpendWise</h2>
+        <p class="text-xs text-gray-400 mt-1">Smart Multi-User Financial Management</p>
+      </div>
+
+      <!-- Tab Buttons for Auth Mode -->
+      <div class="grid grid-cols-2 gap-2 p-1 bg-gray-900 rounded-xl mb-6">
+        <button id="tabBtnLogin" onclick="switchAuthMode('login')" class="py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">Sign In</button>
+        <button id="tabBtnRegister" onclick="switchAuthMode('register')" class="py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition">Sign Up</button>
+      </div>
+
+      <!-- Auth Form -->
+      <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+        <div id="nameFieldGroup" class="hidden">
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Full Name</label>
+          <div class="relative">
+            <i class="fa-solid fa-user absolute left-3 top-3 text-gray-500 text-xs"></i>
+            <input type="text" id="authName" placeholder="Rahul Sharma" class="w-full pl-9 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Email Address</label>
+          <div class="relative">
+            <i class="fa-solid fa-envelope absolute left-3 top-3 text-gray-500 text-xs"></i>
+            <input type="email" id="authEmail" required placeholder="you@example.com" class="w-full pl-9 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Password</label>
+          <div class="relative">
+            <i class="fa-solid fa-lock absolute left-3 top-3 text-gray-500 text-xs"></i>
+            <input type="password" id="authPassword" required placeholder="••••••••" class="w-full pl-9 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <button type="submit" id="authSubmitBtn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition mt-2">
+          Sign In
+        </button>
+      </form>
+
+      <div class="relative my-6 text-center">
+        <hr class="border-gray-700">
+        <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gray-800 px-3 text-xs text-gray-500">or</span>
+      </div>
+
+      <!-- Quick Demo / Guest Mode -->
+      <button onclick="loginAsGuest()" class="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-user-ninja text-indigo-400"></i> Continue as Guest (Sandbox Mode)
+      </button>
+    </div>
+  </div>
+
+  <!-- TOP APP BAR -->
+  <header class="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap justify-between items-center gap-4">
+      <!-- Logo -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+          <i class="fa-solid fa-wallet text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">SpendWise</h1>
+          <p class="text-xs text-gray-400">Smart Financial Tracker</p>
+        </div>
+      </div>
+
+      <!-- User Profile & Actions -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Currency Switcher -->
+        <select id="currencySelect" onchange="changeCurrency(this.value)" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-200">
+          <option value="INR" selected>INR (₹)</option>
+          <option value="USD">USD ($)</option>
+          <option value="EUR">EUR (€)</option>
+          <option value="GBP">GBP (£)</option>
+          <option value="AED">AED (AED)</option>
+        </select>
+
+        <!-- Data Export -->
+        <button onclick="exportCSV()" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+          <i class="fa-solid fa-file-csv text-emerald-400"></i> Export CSV
+        </button>
+
+        <!-- Quick Add Button -->
+        <button onclick="openModal()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium shadow-md shadow-indigo-600/30 flex items-center gap-2 transition">
+          <i class="fa-solid fa-plus"></i> Add Entry
+        </button>
+
+        <!-- User Profile Pill -->
+        <div class="flex items-center gap-2 pl-2 border-l border-gray-700">
+          <div class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-xs font-bold" id="userAvatar">
+            U
+          </div>
+          <span id="userEmailDisplay" class="text-xs font-medium text-gray-300 max-w-[120px] truncate">User</span>
+          <button onclick="logout()" title="Sign Out" class="text-gray-400 hover:text-rose-400 text-sm ml-1">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN DASHBOARD CONTENT -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- SUMMARY METRICS CARDS -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <!-- Net Balance -->
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5 shadow-sm">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Net Balance</p>
+            <h2 id="totalBalance" class="text-2xl font-bold mt-1 text-white">₹0.00</h2>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+            <i class="fa-solid fa-scale-balanced"></i>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-3"><span class="text-emerald-400 font-semibold"><i class="fa-solid fa-circle-check"></i> Isolated Account</span> Data</p>
+      </div>
+
+      <!-- Income -->
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5 shadow-sm">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Total Income</p>
+            <h2 id="totalIncome" class="text-2xl font-bold mt-1 text-emerald-400">₹0.00</h2>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i class="fa-solid fa-arrow-down-left"></i>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-3"><span id="incomeCount" class="text-gray-300 font-semibold">0</span> items recorded</p>
+      </div>
+
+      <!-- Expenses -->
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5 shadow-sm">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Total Expenses</p>
+            <h2 id="totalExpense" class="text-2xl font-bold mt-1 text-rose-400">₹0.00</h2>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center">
+            <i class="fa-solid fa-arrow-up-right"></i>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-3"><span id="expenseCount" class="text-gray-300 font-semibold">0</span> transactions</p>
+      </div>
+
+      <!-- Savings Rate -->
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5 shadow-sm">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Savings Rate</p>
+            <h2 id="savingsRate" class="text-2xl font-bold mt-1 text-amber-400">0%</h2>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+            <i class="fa-solid fa-piggy-bank"></i>
+          </div>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-1.5 mt-4 overflow-hidden">
+          <div id="savingsProgressBar" class="bg-amber-400 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="flex border-b border-gray-700 mb-6 space-x-6 overflow-x-auto">
+      <button onclick="switchTab('dashboard')" id="tab-dashboard" class="py-3 px-1 text-sm font-semibold text-indigo-400 border-b-2 border-indigo-500 flex items-center gap-2 whitespace-nowrap">
+        <i class="fa-solid fa-chart-pie"></i> Dashboard
+      </button>
+      <button onclick="switchTab('transactions')" id="tab-transactions" class="py-3 px-1 text-sm font-semibold text-gray-400 hover:text-gray-200 border-b-2 border-transparent flex items-center gap-2 whitespace-nowrap">
+        <i class="fa-solid fa-list-check"></i> Transactions
+      </button>
+      <button onclick="switchTab('budgets')" id="tab-budgets" class="py-3 px-1 text-sm font-semibold text-gray-400 hover:text-gray-200 border-b-2 border-transparent flex items-center gap-2 whitespace-nowrap">
+        <i class="fa-solid fa-bullseye"></i> Budgets
+      </button>
+      <button onclick="switchTab('analytics')" id="tab-analytics" class="py-3 px-1 text-sm font-semibold text-gray-400 hover:text-gray-200 border-b-2 border-transparent flex items-center gap-2 whitespace-nowrap">
+        <i class="fa-solid fa-chart-column"></i> Analytics & Reports
+      </button>
+    </div>
+
+    <!-- TAB 1: DASHBOARD VIEW -->
+    <div id="view-dashboard" class="space-y-6">
+      <div id="smartInsightCard" class="bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-gray-800 border border-indigo-500/30 rounded-2xl p-4 flex items-start gap-3">
+        <div class="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg mt-0.5">
+          <i class="fa-solid fa-lightbulb"></i>
+        </div>
+        <div class="flex-1">
+          <h4 class="text-sm font-bold text-indigo-300">Personal Insights</h4>
+          <p id="smartInsightText" class="text-xs text-gray-300 mt-1">Logged in successfully. Add transactions to see category breakdowns and spending trends.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5">
+          <h3 class="text-base font-bold text-gray-200 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie text-indigo-400"></i> Category Expense Distribution
+          </h3>
+          <div class="h-64 relative flex items-center justify-center">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5">
+          <h3 class="text-base font-bold text-gray-200 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-emerald-400"></i> Daily Spending Trend
+          </h3>
+          <div class="h-64 relative">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-base font-bold text-gray-200">Recent Account Entries</h3>
+          <button onclick="switchTab('transactions')" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold">View All &rarr;</button>
+        </div>
+        <div id="recentTransactionsList" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: TRANSACTIONS VIEW -->
+    <div id="view-transactions" class="space-y-4 hidden">
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="relative flex-1 min-w-[200px]">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-sm"></i>
+          <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Search payments, categories..." class="w-full pl-9 pr-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="typeFilter" onchange="renderTransactions()" class="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg px-3 py-1.5">
+            <option value="all">All Types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+          <select id="categoryFilter" onchange="renderTransactions()" class="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg px-3 py-1.5">
+            <option value="all">All Categories</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="bg-gray-800 border border-gray-700/80 rounded-2xl overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-gray-300">
+            <thead class="bg-gray-900/60 text-xs text-gray-400 uppercase tracking-wider border-b border-gray-700">
+              <tr>
+                <th class="px-5 py-3">Date</th>
+                <th class="px-5 py-3">Description</th>
+                <th class="px-5 py-3">Category</th>
+                <th class="px-5 py-3">Payment</th>
+                <th class="px-5 py-3 text-right">Amount</th>
+                <th class="px-5 py-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="transactionsTableBody" class="divide-y divide-gray-700/50"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: BUDGETS VIEW -->
+    <div id="view-budgets" class="space-y-6 hidden">
+      <div class="flex justify-between items-center">
+        <div>
+          <h3 class="text-lg font-bold text-gray-100">Category Budgets</h3>
+          <p class="text-xs text-gray-400">Set spending limits for your account</p>
+        </div>
+        <button onclick="openBudgetModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+          <i class="fa-solid fa-sliders"></i> Set Budget Limits
+        </button>
+      </div>
+      <div id="budgetsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </div>
+
+    <!-- TAB 4: ANALYTICS VIEW -->
+    <div id="view-analytics" class="space-y-6 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5">
+          <h3 class="text-base font-bold text-gray-200 mb-4">Cash Flow Comparison</h3>
+          <div class="h-64 relative">
+            <canvas id="cashFlowChart"></canvas>
+          </div>
+        </div>
+        <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-5">
+          <h3 class="text-base font-bold text-gray-200 mb-4">Payment Method Breakdown</h3>
+          <div class="h-64 relative flex items-center justify-center">
+            <canvas id="paymentChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ADD / EDIT TRANSACTION MODAL -->
+  <div id="transactionModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+
+      <h3 id="modalTitle" class="text-lg font-bold text-gray-100 mb-4">Add Transaction</h3>
+
+      <form id="transactionForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+        <input type="hidden" id="editId">
+
+        <div class="grid grid-cols-2 gap-2 p-1 bg-gray-900 rounded-xl">
+          <button type="button" id="btnTypeExpense" onclick="setFormType('expense')" class="py-2 text-xs font-bold rounded-lg bg-rose-600 text-white transition">Expense</button>
+          <button type="button" id="btnTypeIncome" onclick="setFormType('income')" class="py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition">Income</button>
+        </div>
+        <input type="hidden" id="formType" value="expense">
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Amount</label>
+          <div class="relative">
+            <span id="formCurrencySymbol" class="absolute left-3 top-2.5 text-gray-400 font-bold text-sm">₹</span>
+            <input type="number" step="0.01" min="0.01" id="formAmount" required placeholder="0.00" class="w-full pl-8 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Description</label>
+          <input type="text" id="formDescription" required placeholder="e.g. Swiggy, Electricity Bill, Salary" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">Category</label>
+            <select id="formCategory" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">Date</label>
+            <input type="date" id="formDate" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Payment Method</label>
+          <select id="formPaymentMethod" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="UPI / GPay / PhonePe">UPI / GPay / PhonePe</option>
+            <option value="Credit Card">Credit Card</option>
+            <option value="Debit Card">Debit Card</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+          </select>
+        </div>
+
+        <div class="pt-2 flex gap-3">
+          <button type="button" onclick="closeModal()" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-semibold rounded-xl">Cancel</button>
+          <button type="submit" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-indigo-600/30">Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SET BUDGET MODAL -->
+  <div id="budgetModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <button onclick="closeBudgetModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+
+      <h3 class="text-lg font-bold text-gray-100 mb-4">Set Category Budget</h3>
+
+      <form id="budgetForm" onsubmit="handleBudgetSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Category</label>
+          <select id="budgetCategorySelect" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-xs"></select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">Monthly Spending Limit</label>
+          <input type="number" step="100" min="0" id="budgetLimitInput" required placeholder="5000" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm">
+        </div>
+        <div class="pt-2 flex gap-3">
+          <button type="button" onclick="closeBudgetModal()" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-semibold rounded-xl">Cancel</button>
+          <button type="submit" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-md">Set Limit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP ENGINE -->
+  <script>
+    // OPTIONAL: Firebase Config (Paste your Firebase credentials here to enable cloud database sync)
+    const firebaseConfig = {
+      apiKey: "",
+      authDomain: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    };
+
+    // Initialize Firebase if Configured
+    let useFirebase = false;
+    if (firebaseConfig.apiKey !== "") {
+      try {
+        firebase.initializeApp(firebaseConfig);
+        useFirebase = true;
+      } catch (err) {
+        console.warn("Firebase not configured. Running in Local Storage Mode.");
+      }
+    }
+
+    // STATE VARIABLES
+    let currentUser = null;
+    let authMode = 'login';
+    let currentCurrency = 'INR';
+    const CURRENCY_SYMBOLS = { INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'AED ' };
+
+    const EXPENSE_CATEGORIES = ['Food & Dining', 'Transportation', 'Housing & Utilities', 'Entertainment', 'Shopping', 'Healthcare', 'Personal', 'General Expense'];
+    const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Gift', 'Other Income'];
+
+    let transactions = [];
+    let categoryBudgets = { 'Food & Dining': 10000, 'Shopping': 5000, 'Transportation': 3000 };
+
+    let categoryChartInstance = null;
+    let trendChartInstance = null;
+    let cashFlowChartInstance = null;
+    let paymentChartInstance = null;
+
+    // INIT
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if user session exists in local storage
+      const savedUser = localStorage.getItem('spendwise_active_user');
+      if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        hideAuthOverlay();
+        loadUserData();
+      } else {
+        showAuthOverlay();
+      }
+    });
+
+    // AUTH FUNCTIONS
+    function switchAuthMode(mode) {
+      authMode = mode;
+      const nameGroup = document.getElementById('nameFieldGroup');
+      const submitBtn = document.getElementById('authSubmitBtn');
+      const tabLogin = document.getElementById('tabBtnLogin');
+      const tabReg = document.getElementById('tabBtnRegister');
+
+      if (mode === 'register') {
+        nameGroup.classList.remove('hidden');
+        submitBtn.innerText = 'Create Account';
+        tabReg.className = "py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white transition";
+        tabLogin.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+      } else {
+        nameGroup.classList.add('hidden');
+        submitBtn.innerText = 'Sign In';
+        tabLogin.className = "py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white transition";
+        tabReg.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+      }
+    }
+
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+      const email = document.getElementById('authEmail').value;
+      const name = document.getElementById('authName').value || email.split('@')[0];
+
+      currentUser = { email, name, uid: 'user_' + btoa(email).replace(/=/g, '') };
+      localStorage.setItem('spendwise_active_user', JSON.stringify(currentUser));
+      
+      hideAuthOverlay();
+      loadUserData();
+    }
+
+    function loginAsGuest() {
+      currentUser = { email: 'guest@spendwise.local', name: 'Guest User', uid: 'guest_user' };
+      localStorage.setItem('spendwise_active_user', JSON.stringify(currentUser));
+      hideAuthOverlay();
+      loadUserData();
+    }
+
+    function logout() {
+      localStorage.removeItem('spendwise_active_user');
+      currentUser = null;
+      showAuthOverlay();
+    }
+
+    function showAuthOverlay() {
+      document.getElementById('authOverlay').classList.remove('hidden');
+    }
+
+    function hideAuthOverlay() {
+      document.getElementById('authOverlay').classList.add('hidden');
+      document.getElementById('userEmailDisplay').innerText = currentUser.name || currentUser.email;
+      document.getElementById('userAvatar').innerText = (currentUser.name || currentUser.email).charAt(0).toUpperCase();
+    }
+
+    // USER DATA ISOLATION
+    function getUserKey(key) {
+      return `spendwise_${currentUser.uid}_${key}`;
+    }
+
+    function loadUserData() {
+      const savedTx = localStorage.getItem(getUserKey('transactions'));
+      const savedBudgets = localStorage.getItem(getUserKey('budgets'));
+      
+      transactions = savedTx ? JSON.parse(savedTx) : [];
+      if (savedBudgets) categoryBudgets = JSON.parse(savedBudgets);
+
+      if (transactions.length === 0 && currentUser.uid === 'guest_user') {
+        loadSampleData();
+      } else {
+        updateAllUI();
+      }
+    }
+
+    function saveUserData() {
+      if (!currentUser) return;
+      localStorage.setItem(getUserKey('transactions'), JSON.stringify(transactions));
+      localStorage.setItem(getUserKey('budgets'), JSON.stringify(categoryBudgets));
+    }
+
+    function loadSampleData() {
+      const today = new Date();
+      const format = (d) => d.toISOString().split('T')[0];
+
+      transactions = [
+        { id: '1', type: 'income', amount: 65000, description: 'Monthly Salary', category: 'Salary', paymentMethod: 'Bank Transfer', date: format(new Date(today.getFullYear(), today.getMonth(), 1)) },
+        { id: '2', type: 'expense', amount: 2500, description: 'Grocery Store', category: 'Food & Dining', paymentMethod: 'UPI / GPay / PhonePe', date: format(new Date(today.getFullYear(), today.getMonth(), 3)) },
+        { id: '3', type: 'expense', amount: 1200, description: 'Petrol Refill', category: 'Transportation', paymentMethod: 'Debit Card', date: format(new Date(today.getFullYear(), today.getMonth(), 5)) },
+        { id: '4', type: 'expense', amount: 4500, description: 'Weekend Shopping', category: 'Shopping', paymentMethod: 'Credit Card', date: format(new Date(today.getFullYear(), today.getMonth(), 8)) }
+      ];
+      saveUserData();
+      updateAllUI();
+    }
+
+    function formatAmount(amt) {
+      const symbol = CURRENCY_SYMBOLS[currentCurrency] || '₹';
+      return `${symbol}${parseFloat(amt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function changeCurrency(val) {
+      currentCurrency = val;
+      updateAllUI();
+    }
+
+    function updateAllUI() {
+      updateSummaryMetrics();
+      renderRecentTransactions();
+      renderTransactions();
+      renderBudgets();
+      renderCharts();
+      populateCategoryDropdowns();
+    }
+
+    function updateSummaryMetrics() {
+      const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+      const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+      const balance = income - expense;
+      const rate = income > 0 ? Math.max(0, Math.round(((income - expense) / income) * 100)) : 0;
+
+      document.getElementById('totalBalance').innerText = formatAmount(balance);
+      document.getElementById('totalIncome').innerText = formatAmount(income);
+      document.getElementById('totalExpense').innerText = formatAmount(expense);
+      document.getElementById('savingsRate').innerText = `${rate}%`;
+      document.getElementById('savingsProgressBar').style.width = `${Math.min(100, rate)}%`;
+
+      document.getElementById('incomeCount').innerText = transactions.filter(t => t.type === 'income').length;
+      document.getElementById('expenseCount').innerText = transactions.filter(t => t.type === 'expense').length;
+    }
+
+    function switchTab(tabId) {
+      ['dashboard', 'transactions', 'budgets', 'analytics'].forEach(t => {
+        const view = document.getElementById(`view-${t}`);
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tabId) {
+          view.classList.remove('hidden');
+          btn.className = "py-3 px-1 text-sm font-semibold text-indigo-400 border-b-2 border-indigo-500 flex items-center gap-2 whitespace-nowrap";
+        } else {
+          view.classList.add('hidden');
+          btn.className = "py-3 px-1 text-sm font-semibold text-gray-400 hover:text-gray-200 border-b-2 border-transparent flex items-center gap-2 whitespace-nowrap";
+        }
+      });
+    }
+
+    function renderRecentTransactions() {
+      const list = document.getElementById('recentTransactionsList');
+      const recent = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+
+      if (recent.length === 0) {
+        list.innerHTML = `<p class="text-xs text-gray-500 italic py-2">No transactions recorded yet.</p>`;
+        return;
+      }
+
+      list.innerHTML = recent.map(t => `
+        <div class="flex items-center justify-between p-3 bg-gray-900/50 hover:bg-gray-900 rounded-xl transition">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'} flex items-center justify-center">
+              <i class="fa-solid ${t.type === 'income' ? 'fa-arrow-down' : 'fa-bag-shopping'} text-sm"></i>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-gray-200">${t.description}</p>
+              <p class="text-xs text-gray-400">${t.category} • ${t.date}</p>
+            </div>
+          </div>
+          <span class="text-sm font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
+            ${t.type === 'income' ? '+' : '-'}${formatAmount(t.amount)}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function renderTransactions() {
+      const tbody = document.getElementById('transactionsTableBody');
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const typeFilter = document.getElementById('typeFilter').value;
+      const catFilter = document.getElementById('categoryFilter').value;
+
+      let filtered = transactions.filter(t => {
+        const matchesSearch = t.description.toLowerCase().includes(search) || t.category.toLowerCase().includes(search);
+        const matchesType = typeFilter === 'all' || t.type === typeFilter;
+        const matchesCat = catFilter === 'all' || t.category === catFilter;
+        return matchesSearch && matchesType && matchesCat;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-xs text-gray-500">No matching entries found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(t => `
+        <tr class="hover:bg-gray-700/30 transition">
+          <td class="px-5 py-3.5 text-xs text-gray-400 font-mono">${t.date}</td>
+          <td class="px-5 py-3.5 font-medium text-gray-200">${t.description}</td>
+          <td class="px-5 py-3.5 text-xs"><span class="px-2.5 py-1 rounded-full bg-gray-700 text-gray-300 font-medium">${t.category}</span></td>
+          <td class="px-5 py-3.5 text-xs text-gray-400">${t.paymentMethod || 'UPI'}</td>
+          <td class="px-5 py-3.5 text-right font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
+            ${t.type === 'income' ? '+' : '-'}${formatAmount(t.amount)}
+          </td>
+          <td class="px-5 py-3.5 text-center space-x-2">
+            <button onclick="deleteTransaction('${t.id}')" class="text-gray-400 hover:text-rose-400 transition"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderBudgets() {
+      const grid = document.getElementById('budgetsGrid');
+      grid.innerHTML = '';
+
+      EXPENSE_CATEGORIES.forEach(cat => {
+        const limit = categoryBudgets[cat] || 0;
+        const spent = transactions
+          .filter(t => t.type === 'expense' && t.category === cat)
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+
+        const pct = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
+        let colorClass = 'bg-emerald-500';
+
+        if (pct >= 100) colorClass = 'bg-rose-500';
+        else if (pct >= 80) colorClass = 'bg-amber-500';
+
+        grid.innerHTML += `
+          <div class="bg-gray-800 border border-gray-700/80 rounded-2xl p-4">
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-bold text-gray-200 text-sm">${cat}</h4>
+              <span class="text-xs font-semibold text-gray-300">${pct}% Spent</span>
+            </div>
+            <div class="flex justify-between items-baseline text-xs text-gray-400 mb-2">
+              <span>Spent: <b class="text-gray-200">${formatAmount(spent)}</b></span>
+              <span>Limit: <b>${limit > 0 ? formatAmount(limit) : 'Not Set'}</b></span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+              <div class="${colorClass} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function renderCharts() {
+      renderCategoryChart();
+      renderTrendChart();
+      renderCashFlowChart();
+      renderPaymentChart();
+    }
+
+    function renderCategoryChart() {
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      const expenses = transactions.filter(t => t.type === 'expense');
+
+      const catTotals = {};
+      expenses.forEach(t => catTotals[t.category] = (catTotals[t.category] || 0) + Number(t.amount));
+
+      const labels = Object.keys(catTotals);
+      const data = Object.values(catTotals);
+
+      if (categoryChartInstance) categoryChartInstance.destroy();
+
+      categoryChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.length ? labels : ['No Data'],
+          datasets: [{
+            data: data.length ? data : [1],
+            backgroundColor: ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6', '#14b8a6', '#64748b'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 11 } } } }
+        }
+      });
+    }
+
+    function renderTrendChart() {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      const dateTotals = {};
+      transactions.filter(t => t.type === 'expense').forEach(t => {
+        dateTotals[t.date] = (dateTotals[t.date] || 0) + Number(t.amount);
+      });
+
+      const sortedDates = Object.keys(dateTotals).sort();
+      const amounts = sortedDates.map(d => dateTotals[d]);
+
+      if (trendChartInstance) trendChartInstance.destroy();
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sortedDates,
+          datasets: [{
+            label: 'Expenses',
+            data: amounts,
+            borderColor: '#f43f5e',
+            backgroundColor: 'rgba(244, 63, 94, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+            y: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    function renderCashFlowChart() {
+      const ctx = document.getElementById('cashFlowChart').getContext('2d');
+      const inc = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+      const exp = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+
+      if (cashFlowChartInstance) cashFlowChartInstance.destroy();
+
+      cashFlowChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Totals'],
+          datasets: [
+            { label: 'Income', data: [inc], backgroundColor: '#10b981' },
+            { label: 'Expense', data: [exp], backgroundColor: '#f43f5e' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+            y: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }
+          },
+          plugins: { legend: { labels: { color: '#9ca3af' } } }
+        }
+      });
+    }
+
+    function renderPaymentChart() {
+      const ctx = document.getElementById('paymentChart').getContext('2d');
+      const payTotals = {};
+      transactions.forEach(t => {
+        const method = t.paymentMethod || 'UPI';
+        payTotals[method] = (payTotals[method] || 0) + Number(t.amount);
+      });
+
+      if (paymentChartInstance) paymentChartInstance.destroy();
+
+      paymentChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(payTotals),
+          datasets: [{
+            data: Object.values(payTotals),
+            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af' } } }
+        }
+      });
+    }
+
+    function openModal() {
+      document.getElementById('transactionForm').reset();
+      document.getElementById('editId').value = '';
+      document.getElementById('modalTitle').innerText = 'Add Transaction';
+      document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('formCurrencySymbol').innerText = CURRENCY_SYMBOLS[currentCurrency];
+      setFormType('expense');
+      document.getElementById('transactionModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('transactionModal').classList.add('hidden');
+    }
+
+    function setFormType(type) {
+      document.getElementById('formType').value = type;
+      const btnExp = document.getElementById('btnTypeExpense');
+      const btnInc = document.getElementById('btnTypeIncome');
+
+      if (type === 'expense') {
+        btnExp.className = "py-2 text-xs font-bold rounded-lg bg-rose-600 text-white transition";
+        btnInc.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+      } else {
+        btnInc.className = "py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white transition";
+        btnExp.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+      }
+      populateCategoryDropdowns();
+    }
+
+    function populateCategoryDropdowns() {
+      const formCat = document.getElementById('formCategory');
+      const filterCat = document.getElementById('categoryFilter');
+      const type = document.getElementById('formType').value;
+
+      const cats = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+      formCat.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      const allUnique = Array.from(new Set(transactions.map(t => t.category)));
+      filterCat.innerHTML = `<option value="all">All Categories</option>` + allUnique.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      const budgetCatSelect = document.getElementById('budgetCategorySelect');
+      budgetCatSelect.innerHTML = EXPENSE_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('editId').value || Date.now().toString();
+      const type = document.getElementById('formType').value;
+      const amount = parseFloat(document.getElementById('formAmount').value);
+      const description = document.getElementById('formDescription').value;
+      const category = document.getElementById('formCategory').value;
+      const date = document.getElementById('formDate').value;
+      const paymentMethod = document.getElementById('formPaymentMethod').value;
+
+      transactions.push({ id, type, amount, description, category, date, paymentMethod });
+      saveUserData();
+      updateAllUI();
+      closeModal();
+    }
+
+    function deleteTransaction(id) {
+      if (confirm('Delete this transaction?')) {
+        transactions = transactions.filter(t => t.id !== id);
+        saveUserData();
+        updateAllUI();
+      }
+    }
+
+    function openBudgetModal() {
+      document.getElementById('budgetModal').classList.remove('hidden');
+    }
+
+    function closeBudgetModal() {
+      document.getElementById('budgetModal').classList.add('hidden');
+    }
+
+    function handleBudgetSubmit(e) {
+      e.preventDefault();
+      const cat = document.getElementById('budgetCategorySelect').value;
+      const limit = parseFloat(document.getElementById('budgetLimitInput').value);
+
+      categoryBudgets[cat] = limit;
+      saveUserData();
+      renderBudgets();
+      closeBudgetModal();
+    }
+
+    function exportCSV() {
+      if (transactions.length === 0) return alert('No entries to export!');
+      let csv = 'ID,Type,Amount,Description,Category,Date,PaymentMethod\n';
+      transactions.forEach(t => {
+        csv += `"${t.id}","${t.type}",${t.amount},"${t.description}","${t.category}","${t.date}","${t.paymentMethod || ''}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SpendWise_${currentUser.email}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+    }
+  </script>
+</body>
+</html>
